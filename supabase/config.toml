@@ -1,0 +1,10 @@
+project_id = "xmfhthhbxdcdascggdnv"
+
+[functions.health]
+verify_jwt = false
+
+[functions.detect-sign]
+verify_jwt = false
+
+[functions.translate-text]
+verify_jwt = false
