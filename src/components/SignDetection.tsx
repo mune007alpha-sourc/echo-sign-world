@@ -65,13 +65,36 @@ export function SignDetection({ language, onDetection }: SignDetectionProps) {
     }
   };
 
+  // Load MediaPipe script from CDN
+  const loadMediaPipeScript = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      // Check if already loaded
+      if ((window as any).Hands) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+      script.crossOrigin = 'anonymous';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load MediaPipe Hands'));
+      document.head.appendChild(script);
+    });
+  };
+
   // Initialize MediaPipe Hands
   const initializeMediaPipe = useCallback(async () => {
     try {
-      // @ts-ignore - MediaPipe types
-      const { Hands } = await import('@mediapipe/hands');
+      // Load script from CDN
+      await loadMediaPipeScript();
+
+      const HandsConstructor = (window as any).Hands;
+      if (!HandsConstructor) {
+        throw new Error('MediaPipe Hands not available');
+      }
       
-      const hands = new Hands({
+      const hands = new HandsConstructor({
         locateFile: (file: string) => {
           return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
         }
