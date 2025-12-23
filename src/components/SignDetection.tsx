@@ -10,50 +10,236 @@ interface SignDetectionProps {
   onDetection?: (text: string) => void;
 }
 
-// Simple gesture classifier based on hand landmarks
+// Simple gesture classifier based on hand landmarks - ASL Alphabet A-Z + common signs
 const classifyGesture = (landmarks: number[][]): { gesture: string; confidence: number } | null => {
   if (!landmarks || landmarks.length !== 21) return null;
 
   // Get key landmark positions
   const wrist = landmarks[0];
+  const thumbCmc = landmarks[1];
+  const thumbMcp = landmarks[2];
+  const thumbIp = landmarks[3];
   const thumbTip = landmarks[4];
-  const indexTip = landmarks[8];
-  const middleTip = landmarks[12];
-  const ringTip = landmarks[16];
-  const pinkyTip = landmarks[20];
   const indexMcp = landmarks[5];
+  const indexPip = landmarks[6];
+  const indexDip = landmarks[7];
+  const indexTip = landmarks[8];
   const middleMcp = landmarks[9];
+  const middlePip = landmarks[10];
+  const middleDip = landmarks[11];
+  const middleTip = landmarks[12];
   const ringMcp = landmarks[13];
+  const ringPip = landmarks[14];
+  const ringDip = landmarks[15];
+  const ringTip = landmarks[16];
   const pinkyMcp = landmarks[17];
+  const pinkyPip = landmarks[18];
+  const pinkyDip = landmarks[19];
+  const pinkyTip = landmarks[20];
 
-  // Calculate if fingers are extended (tip above MCP in y-axis, since y increases downward)
-  const thumbExtended = thumbTip[0] < landmarks[3][0]; // thumb extends outward
-  const indexExtended = indexTip[1] < indexMcp[1];
-  const middleExtended = middleTip[1] < middleMcp[1];
-  const ringExtended = ringTip[1] < ringMcp[1];
-  const pinkyExtended = pinkyTip[1] < pinkyMcp[1];
+  // Helper functions
+  const distance = (p1: number[], p2: number[]) => 
+    Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2));
 
-  // Count extended fingers
+  // Check if fingers are extended (tip above PIP in y-axis)
+  const thumbExtended = thumbTip[0] < thumbIp[0]; // thumb extends outward (for right hand)
+  const indexExtended = indexTip[1] < indexPip[1];
+  const middleExtended = middleTip[1] < middlePip[1];
+  const ringExtended = ringTip[1] < ringPip[1];
+  const pinkyExtended = pinkyTip[1] < pinkyPip[1];
+  
+  // Check if fingers are curled (tip below MCP)
+  const indexCurled = indexTip[1] > indexMcp[1];
+  const middleCurled = middleTip[1] > middleMcp[1];
+  const ringCurled = ringTip[1] > ringMcp[1];
+  const pinkyCurled = pinkyTip[1] > pinkyMcp[1];
+
+  // Check finger touching thumb
+  const thumbIndexTouch = distance(thumbTip, indexTip) < 0.08;
+  const thumbMiddleTouch = distance(thumbTip, middleTip) < 0.08;
+  const thumbRingTouch = distance(thumbTip, ringTip) < 0.08;
+  const thumbPinkyTouch = distance(thumbTip, pinkyTip) < 0.08;
+
+  // Count extended fingers (not including thumb)
   const extendedCount = [indexExtended, middleExtended, ringExtended, pinkyExtended].filter(Boolean).length;
+  
+  // Finger spread - distance between index and pinky tips
+  const fingerSpread = distance(indexTip, pinkyTip);
+  
+  // Check if fingers are together
+  const fingersTogether = distance(indexTip, middleTip) < 0.06 && 
+                          distance(middleTip, ringTip) < 0.06;
 
-  // Gesture recognition rules
-  // Thumbs up: only thumb extended, hand relatively vertical
-  if (thumbExtended && extendedCount === 0) {
-    return { gesture: "Yes", confidence: 0.85 };
+  // ===== ASL ALPHABET DETECTION =====
+  
+  // A - Fist with thumb beside (thumb not tucked)
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended && 
+      thumbTip[1] < indexMcp[1] && thumbTip[0] > indexMcp[0]) {
+    return { gesture: "A", confidence: 0.82 };
   }
 
-  // Peace sign / Number 2: index and middle extended
+  // B - Flat hand, fingers together, thumb tucked
+  if (indexExtended && middleExtended && ringExtended && pinkyExtended && 
+      !thumbExtended && fingersTogether) {
+    return { gesture: "B", confidence: 0.85 };
+  }
+
+  // C - Curved hand like holding a cup
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      thumbTip[1] > thumbMcp[1] && distance(thumbTip, indexTip) > 0.1 && 
+      distance(thumbTip, indexTip) < 0.25) {
+    return { gesture: "C", confidence: 0.78 };
+  }
+
+  // D - Index up, others touch thumb
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended && thumbMiddleTouch) {
+    return { gesture: "D", confidence: 0.85 };
+  }
+
+  // E - All fingers curled, thumb tucked under
+  if (indexCurled && middleCurled && ringCurled && pinkyCurled && 
+      thumbTip[1] > indexPip[1]) {
+    return { gesture: "E", confidence: 0.80 };
+  }
+
+  // F - OK sign with three fingers up (thumb and index touch)
+  if (thumbIndexTouch && middleExtended && ringExtended && pinkyExtended) {
+    return { gesture: "F", confidence: 0.85 };
+  }
+
+  // G - Index pointing sideways, thumb parallel
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      Math.abs(indexTip[1] - thumbTip[1]) < 0.1 && 
+      thumbTip[0] < indexMcp[0]) {
+    return { gesture: "G", confidence: 0.78 };
+  }
+
+  // H - Index and middle pointing sideways
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      Math.abs(indexTip[0] - middleTip[0]) < 0.08) {
+    return { gesture: "H", confidence: 0.80 };
+  }
+
+  // I - Pinky up only
+  if (!indexExtended && !middleExtended && !ringExtended && pinkyExtended && !thumbExtended) {
+    return { gesture: "I", confidence: 0.88 };
+  }
+
+  // J - Like I but with motion (we detect static I shape tilted)
+  // Simplified: Pinky extended and angled
+  if (!indexExtended && !middleExtended && !ringExtended && pinkyExtended &&
+      pinkyTip[0] < pinkyMcp[0]) {
+    return { gesture: "J", confidence: 0.75 };
+  }
+
+  // K - Index and middle up in V, thumb between them
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      thumbTip[1] < middleMcp[1] && distance(indexTip, middleTip) > 0.08) {
+    return { gesture: "K", confidence: 0.82 };
+  }
+
+  // L - L shape with thumb and index
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended && 
+      thumbExtended && Math.abs(thumbTip[0] - indexMcp[0]) > 0.1) {
+    return { gesture: "L", confidence: 0.88 };
+  }
+
+  // M - Three fingers over thumb
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      thumbTip[1] > ringMcp[1] && indexTip[1] > thumbTip[1]) {
+    return { gesture: "M", confidence: 0.75 };
+  }
+
+  // N - Two fingers over thumb  
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      thumbTip[1] > middleMcp[1] && indexTip[1] > thumbTip[1] && 
+      ringTip[1] < thumbTip[1]) {
+    return { gesture: "N", confidence: 0.75 };
+  }
+
+  // O - Fingers curved to touch thumb (circular)
+  if (thumbIndexTouch && thumbMiddleTouch && !ringExtended && !pinkyExtended) {
+    return { gesture: "O", confidence: 0.80 };
+  }
+
+  // P - Like K but pointing down
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      indexTip[1] > indexMcp[1] && middleTip[1] > middleMcp[1]) {
+    return { gesture: "P", confidence: 0.78 };
+  }
+
+  // Q - Like G but pointing down
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      indexTip[1] > wrist[1] && thumbExtended) {
+    return { gesture: "Q", confidence: 0.75 };
+  }
+
+  // R - Index and middle crossed
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      distance(indexTip, middleTip) < 0.04) {
+    return { gesture: "R", confidence: 0.80 };
+  }
+
+  // S - Fist with thumb over fingers
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended && 
+      thumbTip[1] > indexMcp[1] && thumbTip[0] < indexTip[0]) {
+    return { gesture: "S", confidence: 0.82 };
+  }
+
+  // T - Thumb between index and middle (fist)
+  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      thumbTip[0] > indexMcp[0] && thumbTip[0] < middleMcp[0]) {
+    return { gesture: "T", confidence: 0.78 };
+  }
+
+  // U - Index and middle up together
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      distance(indexTip, middleTip) < 0.05 && !thumbExtended) {
+    return { gesture: "U", confidence: 0.85 };
+  }
+
+  // V - Peace sign (index and middle spread)
+  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended &&
+      distance(indexTip, middleTip) > 0.08) {
+    return { gesture: "V", confidence: 0.88 };
+  }
+
+  // W - Three fingers up spread
+  if (indexExtended && middleExtended && ringExtended && !pinkyExtended && !thumbExtended) {
+    return { gesture: "W", confidence: 0.85 };
+  }
+
+  // X - Index bent like hook
+  if (!middleExtended && !ringExtended && !pinkyExtended &&
+      indexTip[1] > indexPip[1] && indexPip[1] < indexMcp[1]) {
+    return { gesture: "X", confidence: 0.78 };
+  }
+
+  // Y - Thumb and pinky extended (shaka/hang loose)
+  if (thumbExtended && !indexExtended && !middleExtended && !ringExtended && pinkyExtended) {
+    return { gesture: "Y", confidence: 0.88 };
+  }
+
+  // Z - Index traces Z shape (static: pointing with angle)
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended &&
+      indexTip[0] !== indexMcp[0]) {
+    return { gesture: "Z", confidence: 0.70 };
+  }
+
+  // ===== COMMON SIGNS =====
+
+  // Number 1 / pointing: only index extended (basic)
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended && !thumbExtended) {
+    return { gesture: "1", confidence: 0.85 };
+  }
+
+  // Number 2 / Peace
   if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
     return { gesture: "2", confidence: 0.82 };
   }
 
-  // Number 1 / pointing: only index extended
-  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-    return { gesture: "1", confidence: 0.85 };
-  }
-
-  // Number 3: index, middle, ring extended
-  if (indexExtended && middleExtended && ringExtended && !pinkyExtended) {
+  // Number 3
+  if (indexExtended && middleExtended && ringExtended && !pinkyExtended && thumbExtended) {
     return { gesture: "3", confidence: 0.80 };
   }
 
@@ -62,9 +248,14 @@ const classifyGesture = (landmarks: number[][]): { gesture: string; confidence: 
     return { gesture: "4", confidence: 0.80 };
   }
 
-  // Number 5 / Open hand: all fingers extended
+  // Number 5 / Open hand / Hello
   if (thumbExtended && indexExtended && middleExtended && ringExtended && pinkyExtended) {
     return { gesture: "Hello", confidence: 0.88 };
+  }
+
+  // Thumbs up = Yes
+  if (thumbExtended && extendedCount === 0) {
+    return { gesture: "Yes", confidence: 0.85 };
   }
 
   // I Love You: thumb, index, and pinky extended
@@ -77,11 +268,8 @@ const classifyGesture = (landmarks: number[][]): { gesture: string; confidence: 
     return { gesture: "No", confidence: 0.80 };
   }
 
-  // OK sign: thumb and index touching, others extended
-  const thumbIndexDist = Math.sqrt(
-    Math.pow(thumbTip[0] - indexTip[0], 2) + Math.pow(thumbTip[1] - indexTip[1], 2)
-  );
-  if (thumbIndexDist < 0.1 && middleExtended && ringExtended && pinkyExtended) {
+  // Thank You - fingers touching forming OK
+  if (thumbIndexTouch && middleExtended && ringExtended && pinkyExtended) {
     return { gesture: "Thank You", confidence: 0.82 };
   }
 
